@@ -5,7 +5,7 @@ A python script to download Youtube playlists.
 ![example](https://user-images.githubusercontent.com/92261372/229377993-63eabdf5-92bb-43f9-97ff-7c547b532167.png)
 
 # Usage:
-Download a yt playlsit with subtitles and thumbnails!
+Download a yt playlist with subtitles and thumbnails!
 
 # Contributing
 Just make a pull request and test the features you modifed and added before you do so I can save time testing.

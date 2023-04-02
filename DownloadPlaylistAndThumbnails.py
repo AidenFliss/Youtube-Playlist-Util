@@ -423,17 +423,16 @@ def generate_xspf_playlist(playlist_name, video_ids):
         tracks = []
         for i, video_id in enumerate(video_ids):
             video_title = get_video_title(video_id)
-            video_path = os.path.join(playlist_name, f"{i + 1}. {video_title}.webm")
-            location = os.path.normpath(video_path)
-            location = location.replace(fr"{playlist_name}\{playlist_name}", playlist_name)
+            video_path = os.path.join(playlist_name, f"{i + 1}. {video_title} [{video_id}].webm")
+            location = video_path.replace(fr"{playlist_name}" + "\\", "")
             ext = os.path.splitext(video_path)[1]
             tracks.append({
                 "location": location,
-                "title": f"{i + 1}. {video_title.replace(ext, '')}{ext}",
+                "title": f"{i + 1}. {video_title.replace(ext, '')} [{video_id}]{ext}",
                 "creator": "",
                 "duration": "",
                 "album": "",
-                "trackNum": str(i + 1),
+                "trackNum": "",
                 "annotation": "",
                 "info": "",
                 "image": ""
@@ -504,7 +503,8 @@ def DownloadPlaylist(download_thumbs=True, download_subtitles=False):
     if download_subtitles:
         DownloadSubtitles(p_url, p_name, lang_code)
 
-    print(f"{Color.GREEN}Downloaded playlist and finished process!{Color.END}\n{Color.CYAN}Enjoy the videos! :){Color.END}")
+    print(
+        f"{Color.GREEN}Downloaded playlist and finished process!{Color.END}\n{Color.CYAN}Enjoy the videos! :){Color.END}")
 
 
 def ConvertVideosInFolder():

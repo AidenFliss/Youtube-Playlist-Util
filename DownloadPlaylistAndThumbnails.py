@@ -1,3 +1,5 @@
+import ctypes
+import sys
 import json
 import os
 import shutil
@@ -5,6 +7,7 @@ import subprocess
 from pythumb import Thumbnail
 from sys import platform
 import xml.etree.ElementTree as ET
+import winreg
 
 valid_locales = [
     "Cy-az-AZ",
@@ -341,6 +344,27 @@ class Color:
     END = '\033[0m'
 
 
+def combine_videos():
+    playlist_name = input("Input playlist name: ")
+    if playlist_name is None:
+        exit("Invalid input!")
+    if not os.path.exists(playlist_name):
+        exit("Invalid name!")
+    print("Getting videos...")
+    video_paths = []
+    for file in os.listdir(f"{playlist_name}\\"):
+        if file.endswith(".webm"):
+            video_paths.append(file)
+
+    output_path = os.path.join(playlist_name, "Combined.webm")
+
+    # combine videos using ffmpeg
+    cmd = "ffmpeg -threads 8 -i concat:" + "|".join(video_paths) + " -c copy " + output_path
+    subprocess.run(cmd, check=True, shell=True)
+
+    print("Videos combined and saved as Combined.webm!")
+
+
 def download_thumbnails(pl_url, playlist_name):
     # Use yt-dlp to get the video URLs in the playlist
     if os.path.exists(f"{playlist_name}\\Thumbnails\\"):
@@ -477,34 +501,51 @@ def get_video_title(video_id):
     return title
 
 
-def DownloadPlaylist(download_thumbs=True, download_subtitles=False):
+def DownloadPlaylist(download_thumbs=True, download_subtitles=False, override_url=None, override_name=None):
     lang_code = "en"
-    p_url = input("Enter the YouTube playlist URL: ")
-    if not p_url.startswith("https://") or p_url.startswith("youtube.com"):
-        exit("Invalid link!")
+    if override_url is None or override_name is None:
+        p_url = input("Enter the YouTube playlist URL: ")
+        if not p_url.startswith("https://") or p_url.startswith("youtube.com"):
+            exit("Invalid link!")
 
-    p_name = input("Playlist name: ")
-    # Check if dir is not made and make it
-    isExist = os.path.exists(p_name)
+        p_name = input("Playlist name: ")
+        # Check if dir is not made and make it
+        isExist = os.path.exists(p_name)
 
-    if download_subtitles:
+        if download_subtitles:
+            lang_code = input("Input valid lang code (2 chars): ")
+            if lang_code == "":
+                lang_code = "en"
+            if not valid_locales.__contains__(lang_code):
+                exit("Invalid locale!")
+
+        if not isExist:
+            os.mkdir(p_name)
+
+        download_video(p_url, p_name)  # Download videos in playlist (long process)
+        if download_thumbs:
+            download_thumbnails(p_url, p_name)  # Download thumbnails of those videos and names them numerically
+        if download_subtitles:
+            DownloadSubtitles(p_url, p_name, lang_code)
+
+        print(
+            f"{Color.GREEN}Downloaded playlist and finished process!{Color.END}\n{Color.CYAN}Enjoy the videos! :){Color.END}")
+
+    else:
+        # Check if dir is not made and make it
+        isExist = os.path.exists(override_name)
+        if not isExist:
+            os.mkdir(override_name)
         lang_code = input("Input valid lang code (2 chars): ")
         if lang_code == "":
             lang_code = "en"
         if not valid_locales.__contains__(lang_code):
             exit("Invalid locale!")
-
-    if not isExist:
-        os.mkdir(p_name)
-
-    download_video(p_url, p_name)  # Download videos in playlist (long process)
-    if download_thumbs:
-        download_thumbnails(p_url, p_name)  # Download thumbnails of those videos and names them numerically
-    if download_subtitles:
-        DownloadSubtitles(p_url, p_name, lang_code)
-
-    print(
-        f"{Color.GREEN}Downloaded playlist and finished process!{Color.END}\n{Color.CYAN}Enjoy the videos! :){Color.END}")
+        download_video(override_url, override_name)  # Download videos in playlist (long process)
+        if download_thumbs:
+            download_thumbnails(override_url, override_name)  # Download thumbnails of those videos and names them numerically
+        if download_subtitles:
+            DownloadSubtitles(override_url, override_name, lang_code)
 
 
 def ConvertVideosInFolder():
@@ -651,14 +692,96 @@ def DownloadSubtitles(override_url="none", p_name="none", override_lang="none"):
         shutil.move("Subtitles", f"{p_name}\\Subtitles")
 
 
+def create_url_protocol():
+    # Define the protocol name and the path to the Python interpreter
+    protocol_name = "ytutil"
+    python_path = sys.executable
+    script_path = os.path.abspath(sys.argv[0])
+    print(script_path)
+
+    # Define the registry keys and values to create
+    registry_keys = [
+        (winreg.HKEY_CLASSES_ROOT, protocol_name, None, "URL:" + protocol_name + " Protocol"),
+        (winreg.HKEY_CLASSES_ROOT, protocol_name, "URL Protocol", ""),
+        (winreg.HKEY_CLASSES_ROOT, protocol_name + "\\shell", None, ""),
+        (winreg.HKEY_CLASSES_ROOT, protocol_name + "\\shell\\open", None, ""),
+        (winreg.HKEY_CLASSES_ROOT, protocol_name + "\\shell\\open\\command", None, f'"{script_path} {python_path} %1"')
+    ]
+
+    is_admin = ctypes.windll.shell32.IsUserAnAdmin()
+    if not is_admin:
+        return
+
+    # Check if the registry keys already exist, and create them if they don't
+    for key, subkey, value, data in registry_keys:
+        try:
+            reg_key = winreg.OpenKey(key, subkey, 0, winreg.KEY_READ)
+            reg_value, reg_type = winreg.QueryValueEx(reg_key, value)
+        except FileNotFoundError:
+            reg_key = None
+
+        if reg_key is None:
+            with winreg.CreateKey(key, subkey) as reg_key:
+                if value is not None:
+                    winreg.SetValueEx(reg_key, value, 0, winreg.REG_SZ, data)
+        else:
+            if reg_value != data:
+                with winreg.OpenKey(key, subkey, 0, winreg.KEY_WRITE) as reg_key:
+                    winreg.SetValueEx(reg_key, value, 0, winreg.REG_SZ, data)
+
+
 if __name__ == "__main__":
     os.chdir("C:\\Users\\cflis\\OneDrive\\Desktop")
     if not platform == "win32":
         exit("This code only works on windows! Sorry")
+    create_url_protocol()
+    try:
+        # Detect if user is using the custom protocol (ytutil://{pl_url})
+        args = sys.argv
+        arg = args[1]
+        arg_split = arg.split("ytutil://")
+        arg_split_2 = arg_split  # [1].split("/")
+        arg_split_2 = arg_split_2[1].split("www.")
+
+        if arg_split_2:
+            if arg_split_2[1].startswith("https://") or arg_split_2[1].startswith("youtube.com"):
+                playlist_url = arg_split_2[1]
+                print(
+                    f"{Color.RED}YOUTUBE{Color.END} {Color.BLUE}PLAYLIST{Color.END} {Color.GREEN}DOWNLOADER{Color.END}")
+                print(f"{Color.CYAN}================================================{Color.END}")
+                print(
+                    f"{Color.BOLD}1.{Color.END} No thumb, no subs\n{Color.BOLD}2.{Color.END} Thumb, no subs\n{Color.BOLD}3.{Color.END} No thumb, subs\n{Color.BOLD}4.{Color.END} Thumb, subs {Color.UNDERLINE}(default){Color.END}")
+                print(f"{Color.CYAN}================================================{Color.END}")
+                choice = input(f"Input Option: ")
+                playlist_name = input("Playlist Name: ")
+
+                if choice == "1":
+                    DownloadPlaylist(False, False, playlist_url, playlist_name)
+                elif choice == "2":
+                    DownloadPlaylist(True, False, playlist_url, playlist_name)
+                elif choice == "3":
+                    DownloadPlaylist(False, True, playlist_url, playlist_name)
+                elif choice == "4":
+                    DownloadPlaylist(True, True, playlist_url, playlist_name)
+                else:
+                    DownloadPlaylist(True, True, playlist_url, playlist_name)
+
+                print(
+                    f"{Color.GREEN}Downloaded playlist and finished process!{Color.END}\n{Color.CYAN}Enjoy the videos! :){Color.END}")
+                input()
+                exit(1)
+            else:
+                print(arg_split_2[1])
+                input("enter...")
+                exit("Invalid URL!")
+
+    except Exception as ex:
+        print("")
+
     print(f"{Color.RED}YOUTUBE{Color.END} {Color.BLUE}PLAYLIST{Color.END} {Color.GREEN}DOWNLOADER{Color.END}")
     print(f"{Color.CYAN}================================================{Color.END}")
     print(
-        f"Select what you want to do:\n{Color.BOLD}1.{Color.END} Download a full playlist with thumbnails {Color.BOLD}{Color.UNDERLINE}(default){Color.END}\n{Color.BOLD}2.{Color.END} Download a full playlist without thumbnails\n{Color.BOLD}3.{Color.END} Convert a folder with .webm's to a format using ffmpeg\n{Color.BOLD}4.{Color.END} Download thumbnails for an existing playlist\n{Color.BOLD}5.{Color.END} Download subtitles from a youtube video / playlist\n{Color.BOLD}6.{Color.END} Download a youtube playlist and subtitles\n{Color.BOLD}7.{Color.END} Download a youtube playlist with thumbnails and subtitles")
+        f"Select what you want to do:\n{Color.BOLD}1.{Color.END} Download a full playlist with thumbnails {Color.BOLD}{Color.UNDERLINE}(default){Color.END}\n{Color.BOLD}2.{Color.END} Download a full playlist without thumbnails\n{Color.BOLD}3.{Color.END} Convert a folder with .webm's to a format using ffmpeg\n{Color.BOLD}4.{Color.END} Download thumbnails for an existing playlist\n{Color.BOLD}5.{Color.END} Download subtitles from a youtube video / playlist\n{Color.BOLD}6.{Color.END} Download a youtube playlist and subtitles\n{Color.BOLD}7.{Color.END} Download a youtube playlist with thumbnails and subtitles\n{Color.BOLD}8.{Color.END} Combine a folder of videos into one big video")
     print(f"{Color.CYAN}================================================{Color.END}")
     choice = input("Input Option: ")
 
@@ -676,5 +799,7 @@ if __name__ == "__main__":
         DownloadPlaylist(False, True)
     elif choice == "7":
         DownloadPlaylist(True, True)
+    elif choice == "8":
+        combine_videos()
     else:
         DownloadPlaylist(True)
